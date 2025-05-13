@@ -6,6 +6,7 @@
 #include <string.h>
 #include <sys/select.h>
 #include <termios.h>
+#include <time.h>
 #include <unistd.h>
 
 #include "game.h"
@@ -86,7 +87,7 @@ static void decoding(unsigned int decoding_val, char *display_buf)
 {
     char table[N_GRIDS];
     memset(table, ' ', sizeof(table));
-    for (int i = N_GRIDS - 1; i > 0; i--) {
+    for (int i = N_GRIDS - 1; i >= 0; i--) {
         unsigned int val = (decoding_val >> (i << 1)) & 0x3;
         switch (val) {
         case 0x0:
@@ -129,7 +130,6 @@ int main(int argc, char *argv[])
     static char display_buf[DRAWBUFFER_SIZE] = {0};
     unsigned int decoding_val __attribute__((aligned(64)));
 
-
     fd_set readset;
     int device_fd = open(XO_DEVICE_FILE, O_RDONLY);
     int max_fd = device_fd > STDIN_FILENO ? device_fd : STDIN_FILENO;
@@ -151,12 +151,16 @@ int main(int argc, char *argv[])
             FD_CLR(STDIN_FILENO, &readset);
             listen_keyboard_handler();
         } else if (read_attr && FD_ISSET(device_fd, &readset)) {
+            time_t now = time(NULL);
+            const struct tm *t = localtime(&now);
             FD_CLR(device_fd, &readset);
             printf("\033[H\033[J"); /* ASCII escape code to clear the screen */
             read(device_fd, &decoding_val, sizeof(decoding_val));
             decoding(decoding_val, display_buf);
             display_buf[DRAWBUFFER_SIZE - 1] = '\0';
             printf("%s", display_buf);
+            printf("\n%04d-%02d-%02d %02d:%02d:%02d\n", t->tm_year + 1900,
+                   t->tm_mon + 1, t->tm_mday, t->tm_hour, t->tm_min, t->tm_sec);
         }
     }
 

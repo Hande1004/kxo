@@ -206,7 +206,7 @@ static void fast_buf_clear(void)
 static void encoding(char *table)
 {
     draw_state = 0;
-    static unsigned long int val __attribute__((aligned(64))) = 0;
+    unsigned long int val __attribute__((aligned(64))) = 0;
     for (int i = 0; i < N_GRIDS; i++) {
         switch (table[i]) {
         case 'X':
