@@ -82,6 +82,41 @@ static void listen_keyboard_handler(void)
     close(attr_fd);
 }
 
+static void decoding(unsigned int decoding_val, char *display_buf)
+{
+    char table[N_GRIDS];
+    memset(table, ' ', sizeof(table));
+    for (int i = N_GRIDS - 1; i > 0; i--) {
+        unsigned int val = (decoding_val >> (i << 1)) & 0x3;
+        switch (val) {
+        case 0x0:
+            table[N_GRIDS - 1 - i] = ' ';
+            break;
+        case 0x2:
+            table[N_GRIDS - 1 - i] = 'X';
+            break;
+        case 0x3:
+            table[N_GRIDS - 1 - i] = 'O';
+            break;
+        }
+    }
+
+    int i = 0, k = 0;
+    display_buf[i++] = '\n';
+    display_buf[i++] = '\n';
+
+    while (i < DRAWBUFFER_SIZE) {
+        for (int j = 0; j < (BOARD_SIZE << 1) - 1 && k < N_GRIDS; j++) {
+            display_buf[i++] = j & 1 ? '|' : table[k++];
+        }
+        display_buf[i++] = '\n';
+        for (int j = 0; j < (BOARD_SIZE << 1) - 1; j++) {
+            display_buf[i++] = '-';
+        }
+        display_buf[i++] = '\n';
+    }
+}
+
 int main(int argc, char *argv[])
 {
     if (!status_check())
@@ -91,7 +126,9 @@ int main(int argc, char *argv[])
     int flags = fcntl(STDIN_FILENO, F_GETFL, 0);
     fcntl(STDIN_FILENO, F_SETFL, flags | O_NONBLOCK);
 
-    char display_buf[DRAWBUFFER_SIZE];
+    static char display_buf[DRAWBUFFER_SIZE] = {0};
+    unsigned int decoding_val __attribute__((aligned(64)));
+
 
     fd_set readset;
     int device_fd = open(XO_DEVICE_FILE, O_RDONLY);
@@ -116,7 +153,8 @@ int main(int argc, char *argv[])
         } else if (read_attr && FD_ISSET(device_fd, &readset)) {
             FD_CLR(device_fd, &readset);
             printf("\033[H\033[J"); /* ASCII escape code to clear the screen */
-            read(device_fd, display_buf, DRAWBUFFER_SIZE);
+            read(device_fd, &decoding_val, sizeof(decoding_val));
+            decoding(decoding_val, display_buf);
             display_buf[DRAWBUFFER_SIZE - 1] = '\0';
             printf("%s", display_buf);
         }
