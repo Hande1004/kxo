@@ -200,7 +200,7 @@ static void fast_buf_clear(void)
 //     produce_board();
 //     mutex_unlock(&consumer_lock);
 
-//     wake_up_interruptible(&rx_wait);
+//
 // }
 
 static void encoding(char *table)

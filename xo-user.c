@@ -40,6 +40,14 @@ static int ntasks;
 static char display_buf[DRAWBUFFER_SIZE];
 static struct task *cur_task;
 
+struct AI_state {
+    uint64_t total_cpu_ns_X;
+    uint64_t total_cpu_ns_O;
+    uint64_t total_wall_ns_X;
+    uint64_t total_wall_ns_O;
+};
+struct AI_state ai_state = {0};
+
 static void task_add(struct task *task)
 {
     list_add_tail(&task->list, &tasklist);
@@ -83,7 +91,16 @@ void task_O(void)
     while (!attr_obj.end) {
         if (setjmp(task->env) == 0) {
             int move;
+            struct timespec start, end;
+
+            clock_gettime(CLOCK_THREAD_CPUTIME_ID, &start);
             move = mcts(board, 'O');
+            clock_gettime(CLOCK_THREAD_CPUTIME_ID, &end);
+
+            uint64_t delta_ns = (end.tv_sec - start.tv_sec) * 1000000000UL +
+                                (end.tv_nsec - start.tv_nsec);
+            ai_state.total_cpu_ns_O += delta_ns;
+
             if (move != -1)
                 board[move] = 'O';
             task_add(task);
@@ -114,7 +131,13 @@ void task_X(void)
     while (!attr_obj.end) {
         if (setjmp(task->env) == 0) {
             int move;
+            struct timespec start, end;
+            clock_gettime(CLOCK_THREAD_CPUTIME_ID, &start);
             move = negamax_predict(board, 'X').move;
+            clock_gettime(CLOCK_THREAD_CPUTIME_ID, &end);
+            uint64_t delta_ns = (end.tv_sec - start.tv_sec) * 1000000000UL +
+                                (end.tv_nsec - start.tv_nsec);
+            ai_state.total_cpu_ns_X += delta_ns;
             if (move != -1) {
                 board[move] = 'X';
             }
@@ -239,10 +262,15 @@ static void task_keyboard_handler(void)
     longjmp(sched, 1);
 }
 
+
+#define FIXED_SHIFT 16
+#define FIXED_ONE (1 << FIXED_SHIFT)
 #define ARRAY_SIZE(arr) (sizeof(arr) / sizeof((arr)[0]))
 
 int main()
 {
+    struct timespec wall_start, wall_end;
+    clock_gettime(CLOCK_MONOTONIC, &wall_start);
     raw_mode_enable();
     int flags = fcntl(STDIN_FILENO, F_GETFL, 0);
     fcntl(STDIN_FILENO, F_SETFL, flags | O_NONBLOCK);
@@ -262,7 +290,17 @@ int main()
 
     raw_mode_disable();
     fcntl(STDIN_FILENO, F_SETFL, flags);
+    clock_gettime(CLOCK_MONOTONIC, &wall_end);
+    uint64_t delta_wall_ns =
+        (wall_end.tv_sec - wall_start.tv_sec) * 1000000000UL +
+        (wall_end.tv_nsec - wall_start.tv_nsec);
+    uint64_t load_x = (ai_state.total_cpu_ns_X << FIXED_SHIFT) / delta_wall_ns;
+    uint64_t load_o = (ai_state.total_cpu_ns_O << FIXED_SHIFT) / delta_wall_ns;
 
+    printf("ai negamax load ratio : %lu.%04lu\n", load_x >> FIXED_SHIFT,
+           ((load_x & (FIXED_ONE - 1)) * 10000) >> FIXED_SHIFT);
+    printf("ai mcts load ratio : %lu.%04lu\n", load_o >> FIXED_SHIFT,
+           ((load_o & (FIXED_ONE - 1)) * 10000) >> FIXED_SHIFT);
     return 0;
 }
 // static bool status_check(void)
